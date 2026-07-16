@@ -1,4 +1,4 @@
-# Legal RAG Pipeline — CUAD Contracts (Local, Mac M4)
+# Legal RAG Pipeline — CUAD Contracts 
 
 A hybrid retrieval-augmented generation (RAG) system over the [CUAD](https://huggingface.co/datasets/theatticusproject/cuad-qa)
 legal contracts dataset, with a full evaluation harness comparing retrieval
