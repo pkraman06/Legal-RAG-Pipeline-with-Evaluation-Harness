@@ -16,7 +16,6 @@ from rag_pipeline import LegalRAGPipeline
 
 INDEX_DIR = "indices"
 
-
 def build_indices_if_missing():
     if not os.path.exists(os.path.join(INDEX_DIR, "dense.index")):
         print("[app] No indices found — building from CUAD (first run only, a few minutes)...")
@@ -31,7 +30,11 @@ pipeline = LegalRAGPipeline()
 
 def query_rag(question: str, retrieval_mode: str, top_k: int):
     if not question.strip():
-        return "Please enter a question.", ""
+        yield "Please enter a question.", ""
+        return
+
+    # Show a loading state immediately, before the (potentially slow) retrieval + generation.
+    yield "⏳ *Answer is loading...*", ""
 
     result = pipeline.answer(question, retrieval_mode=retrieval_mode, top_k=int(top_k))
 
@@ -39,7 +42,7 @@ def query_rag(question: str, retrieval_mode: str, top_k: int):
         f"**[{i+1}] {c['title']}**\n\n> {c['text'][:400]}{'...' if len(c['text']) > 400 else ''}"
         for i, c in enumerate(result["retrieved_chunks"])
     )
-    return result["answer"], sources_md
+    yield result["answer"], sources_md
 
 
 with gr.Blocks(title="Legal RAG — CUAD Contracts") as demo:
@@ -95,4 +98,4 @@ with gr.Blocks(title="Legal RAG — CUAD Contracts") as demo:
 if __name__ == "__main__":
     # Plain local launch — opens on http://127.0.0.1:7860 by default.
     # inbrowser=True auto-opens it in your default browser on Mac.
-    demo.queue().launch(inbrowser=True)
+    demo.queue().launch(share=True)
