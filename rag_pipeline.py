@@ -64,10 +64,23 @@ Answer using only the excerpts above, with citation numbers like [1], [2]."""
             {"role": "user", "content": user_prompt},
         ]
 
-        response = self.client.chat_completion(
-            messages=messages, max_tokens=500, temperature=0.1
-        )
-        answer_text = response.choices[0].message.content
+        try:
+            response = self.client.chat_completion(
+                messages=messages, max_tokens=500, temperature=0.1
+            )
+            print("[rag_pipeline] RAW RESPONSE:", response)  # debug
+            answer_text = response.choices[0].message.content
+            print("[rag_pipeline] EXTRACTED ANSWER:", repr(answer_text))  # debug
+        except Exception as e:
+            import traceback
+            traceback.print_exc()  # full traceback goes to your terminal/Colab log
+            answer_text = (
+                f"⚠️ Generation call failed: {type(e).__name__}: {e}\n\n"
+                "Common causes: HF_TOKEN not set or invalid, the model isn't "
+                "available on the free serverless Inference API (try a "
+                "different GENERATION_MODEL), or a huggingface_hub version "
+                "mismatch. Check the terminal for the full traceback."
+            )
 
         return {
             "answer": answer_text,
