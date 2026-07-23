@@ -25,10 +25,44 @@ def build_indices_if_missing():
 
 
 build_indices_if_missing()
-pipeline = LegalRAGPipeline()
+
+# Pipeline is created lazily, once the user provides a valid HF token via the UI.
+pipeline = None
+
+
+def set_token(token: str):
+    """Store the HF token and initialize the RAG pipeline (which builds the
+    HF InferenceClient used for the generation step)."""
+    global pipeline
+
+    token = (token or "").strip()
+    if not token:
+        return (
+            "⚠️ Please enter a Hugging Face token before continuing.",
+            gr.update(interactive=False),
+        )
+
+    os.environ["HF_TOKEN"] = token
+    try:
+        pipeline = LegalRAGPipeline()
+    except Exception as e:
+        pipeline = None
+        return (
+            f"⚠️ Failed to initialize pipeline: {type(e).__name__}: {e}",
+            gr.update(interactive=False),
+        )
+
+    return (
+        "✅ Token set — you can now ask questions below.",
+        gr.update(interactive=True),
+    )
 
 
 def query_rag(question: str, retrieval_mode: str, top_k: int):
+    if pipeline is None:
+        yield "⚠️ Please enter your Hugging Face token above and click **Set Token** first.", ""
+        return
+
     if not question.strip():
         yield "Please enter a question.", ""
         return
@@ -61,6 +95,16 @@ with gr.Blocks(title="Legal RAG — CUAD Contracts") as demo:
     )
 
     with gr.Row():
+        hf_token_box = gr.Textbox(
+            label="Hugging Face Token",
+            placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            type="password",
+            scale=3,
+        )
+        set_token_btn = gr.Button("Set Token", variant="secondary", scale=1)
+    token_status = gr.Markdown("Enter your Hugging Face token above to enable the assistant.")
+
+    with gr.Row():
         with gr.Column(scale=2):
             question = gr.Textbox(
                 label="Your question",
@@ -74,11 +118,17 @@ with gr.Blocks(title="Legal RAG — CUAD Contracts") as demo:
                     label="Retrieval mode",
                 )
                 top_k = gr.Slider(1, 10, value=5, step=1, label="Chunks to retrieve (top_k)")
-            submit_btn = gr.Button("Ask", variant="primary")
+            submit_btn = gr.Button("Ask", variant="primary", interactive=False)
 
         with gr.Column(scale=3):
             answer_box = gr.Markdown(label="Answer")
             sources_box = gr.Markdown(label="Retrieved sources")
+
+    set_token_btn.click(
+        fn=set_token,
+        inputs=[hf_token_box],
+        outputs=[token_status, submit_btn],
+    )
 
     submit_btn.click(
         fn=query_rag,
@@ -92,6 +142,9 @@ with gr.Blocks(title="Legal RAG — CUAD Contracts") as demo:
         Built with hybrid retrieval (BM25 + dense embeddings), cross-encoder
         reranking, and RAGAS-based evaluation. Dataset:
         [theatticusproject/cuad-qa](https://huggingface.co/datasets/theatticusproject/cuad-qa)
+
+        Get a token at: [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+        (needs "Make calls to Inference Providers" permission).
         """
     )
 
