@@ -1,18 +1,5 @@
-"""
-data_loader.py
-Loads the CUAD (Contract Understanding Atticus Dataset) QA dataset from
-Hugging Face and reshapes it into a flat list of (context, question, answer)
-records that are easy to chunk and index for RAG.
-
-Dataset card: https://huggingface.co/datasets/theatticusproject/cuad-qa
-
-Nothing here needs to be downloaded manually — the first call to
-load_dataset() below fetches and caches CUAD locally (under
-~/.cache/huggingface/datasets/) automatically. You just need an internet
-connection the first time you run this.
-"""
-
-from datasets import load_dataset
+import json
+import os
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -28,47 +15,57 @@ class CuadRecord:
 
 def load_cuad(split: str = "train", max_records: Optional[int] = 300) -> List[CuadRecord]:
     """
-    Loads CUAD-QA and returns a flat list of CuadRecord objects.
+    Loads CUAD-QA directly from the raw SQuAD-format CUAD_v1.json file
+    and returns a flat list of CuadRecord objects.
+
+    This bypasses `datasets.load_dataset`, since CUAD_v1.json is a local
+    raw SQuAD-style JSON file (nested data -> paragraphs -> qas), not
+    something `load_dataset` can parse correctly from a bare path.
 
     max_records: cap the number of records for a manageable local run.
                  300 is a good default for a Mac (fast enough to iterate,
                  still enough contracts for a meaningful eval). Set to None
                  to load everything (~13k+ QA pairs, heavier / slower).
     """
-    # CUAD-QA ships a custom dataset loading script rather than plain
-    # parquet/CSV files, so recent `datasets` versions require an explicit
-    # opt-in before executing it. The Atticus Project is a well-known,
-    # reputable source (see https://huggingface.co/datasets/theatticusproject/cuad-qa),
-    # so this is safe to allow here.
-    ds = load_dataset("theatticusproject/cuad-qa", split=split, trust_remote_code=True)
+    path = "/content/CUAD_v1.json"
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"{path} not found. Download it first, e.g.:\n"
+            "  wget -O /content/CUAD_v1.json "
+            "https://raw.githubusercontent.com/TheAtticusProject/cuad/main/data/CUAD_v1.json"
+        )
+
+    with open(path, "r", encoding="utf-8") as f:
+        raw = json.load(f)
 
     records: List[CuadRecord] = []
     seen_docs = set()
 
-    for i, row in enumerate(ds):
-        if max_records is not None and len(records) >= max_records:
-            break
+    for doc in raw["data"]:
+        title = doc.get("title", "untitled")
+        for para in doc["paragraphs"]:
+            context = para["context"]
+            for qa in para["qas"]:
+                if max_records is not None and len(records) >= max_records:
+                    print(f"[data_loader] Loaded {len(records)} QA records across {len(seen_docs)} contracts.")
+                    return records
 
-        title = row.get("title", f"doc_{i}")
-        context = row["context"]
-        question = row["question"]
+                question = qa["question"]
+                doc_id = qa.get("id", f"{title}_{len(records)}")
 
-        answers = row.get("answers", {})
-        answer_texts = answers.get("text", []) if isinstance(answers, dict) else []
-        answer = answer_texts[0] if answer_texts else None
+                answers = qa.get("answers", [])
+                answer = answers[0]["text"] if answers else None
 
-        doc_id = row.get("id", f"{title}_{i}")
-
-        records.append(
-            CuadRecord(
-                doc_id=doc_id,
-                title=title,
-                context=context,
-                question=question,
-                answer=answer,
-            )
-        )
-        seen_docs.add(title)
+                records.append(
+                    CuadRecord(
+                        doc_id=doc_id,
+                        title=title,
+                        context=context,
+                        question=question,
+                        answer=answer,
+                    )
+                )
+                seen_docs.add(title)
 
     print(f"[data_loader] Loaded {len(records)} QA records across {len(seen_docs)} contracts.")
     return records
